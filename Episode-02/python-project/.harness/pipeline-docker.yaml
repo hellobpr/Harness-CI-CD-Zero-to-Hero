@@ -19,7 +19,7 @@ pipeline:
   ##################################################
   # CHANGE THIS: Your project ID
   ###################################################
-  projectIdentifier: HarnessCICDZerotoHero
+  projectIdentifier: default_project
   ####################################################
   # CHANGE THIS: Your org name
   ###################################################
@@ -31,7 +31,7 @@ pipeline:
         ##############################################
         # CHANGE THIS: Your GitHub connector
         ############################################
-        connectorRef: account.Github
+        connectorRef: account.mytest
         ###############################################
         # CHANGE THIS: Your repo name
         ###############################################
