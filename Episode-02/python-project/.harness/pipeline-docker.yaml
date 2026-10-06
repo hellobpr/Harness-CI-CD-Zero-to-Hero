@@ -10,12 +10,13 @@
 # PREREQUISITES:
 #   - Harness Cloud enabled (credit card verification, no charge)
 #   - Docker Hub connector created in Harness (account.dockerhub)
-#   - Secret "docker-hub-password" in Harness
+#   - Secret "docker-hub-password" in Harness (use a Docker Hub Personal Access Token if 2FA is enabled)
 #   - Variable "docker_username" in Harness
 # ============================================
 pipeline:
   name: python-docker-pipeline
   identifier: python_docker_pipeline
+  description: Builds and tests a Python app, pushes the image to Docker Hub, then cleans up the Docker Hub repository.
   ##################################################
   # CHANGE THIS: Your project ID
   ###################################################
@@ -148,17 +149,56 @@ pipeline:
                   identifier: delete_and_verify
                   spec:
                     shell: Sh
+                    envVariables:
+                      DH_USER: <+variable.docker_username>
+                      DH_PASS: <+secrets.getValue("docker-hub-password")>
                     command: |-
-                      echo "=== Step 7: Deleting Docker Hub Image ==="
+                      echo "=== Step 7: Deleting Docker Hub Repository ==="
                       echo ""
-                      TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username":"<+variable.docker_username>","password":"<+secrets.getValue("docker-hub-password")>"}' https://hub.docker.com/v2/users/login/ | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+                      REPO="$DH_USER/python-harness-app"
+
+                      json_field() {
+                        python3 -c "import sys,json
+                      try:
+                          print(json.load(sys.stdin).get('$1',''))
+                      except Exception:
+                          print('')"
+                      }
+
+                      # Attempt 1: legacy password login
+                      LOGIN_BODY=$(python3 -c "import os,json; print(json.dumps({'username':os.environ['DH_USER'],'password':os.environ['DH_PASS']}))")
+                      RESP=$(curl -s -X POST -H "Content-Type: application/json" -d "$LOGIN_BODY" https://hub.docker.com/v2/users/login/ || true)
+                      TOKEN=$(echo "$RESP" | json_field token)
+                      AUTH="JWT $TOKEN"
+
+                      # Attempt 2: access-token endpoint (works with Personal Access Tokens / 2FA accounts)
+                      if [ -z "$TOKEN" ]; then
+                        echo "Legacy login returned no token: $(echo "$RESP" | head -c 300)"
+                        echo "Retrying with /v2/auth/token..."
+                        PAT_BODY=$(python3 -c "import os,json; print(json.dumps({'identifier':os.environ['DH_USER'],'secret':os.environ['DH_PASS']}))")
+                        RESP=$(curl -s -X POST -H "Content-Type: application/json" -d "$PAT_BODY" https://hub.docker.com/v2/auth/token || true)
+                        TOKEN=$(echo "$RESP" | json_field access_token)
+                        AUTH="Bearer $TOKEN"
+                      fi
+
+                      if [ -z "$TOKEN" ]; then
+                        echo "ERROR: Docker Hub login failed. Check the docker-hub-password secret (use a Personal Access Token if 2FA is enabled)."
+                        echo "Response: $(echo "$RESP" | head -c 300)"
+                        exit 1
+                      fi
                       echo "Logged in to Docker Hub API"
                       echo ""
-                      echo "Deleting entire repository: <+variable.docker_username>/python-harness-app"
-                      curl -s -X DELETE -H "Authorization: JWT $TOKEN" https://hub.docker.com/v2/repositories/<+variable.docker_username>/python-harness-app/
-                      echo ""
-                      echo "=== Repository Deleted! ==="
-                      echo "Next run will create it fresh again."
+
+                      echo "Deleting entire repository: $REPO"
+                      HTTP_CODE=$(curl -s -o /tmp/dh_delete_response.txt -w "%{http_code}" -X DELETE -H "Authorization: $AUTH" "https://hub.docker.com/v2/repositories/$REPO/")
+                      if [ "$HTTP_CODE" = "202" ] || [ "$HTTP_CODE" = "204" ]; then
+                        echo "=== Repository Deleted! (HTTP $HTTP_CODE) ==="
+                        echo "Next run will create it fresh again."
+                      else
+                        echo "ERROR: Repository delete failed (HTTP $HTTP_CODE)"
+                        head -c 300 /tmp/dh_delete_response.txt
+                        exit 1
+                      fi
 
               # Step 8: Final verification - confirm images are gone from Docker Hub
               - step:
