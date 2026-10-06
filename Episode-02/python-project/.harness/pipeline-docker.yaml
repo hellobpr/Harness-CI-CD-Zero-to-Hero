@@ -151,11 +151,11 @@ pipeline:
                     command: |-
                       echo "=== Step 7: Deleting Docker Hub Image ==="
                       echo ""
-                      TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username":"<+variable.docker_username>","password":"<+secrets.getValue("docker-hub-password")>"}' https://hub.docker.com/v2/users/login/ | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+                      TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username":"<+variable.docker_username>","password":"<+secrets.getValue("docker-hub-password")>"}' https://hub.docker.com/repositories/bibhurath/ | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
                       echo "Logged in to Docker Hub API"
                       echo ""
                       echo "Deleting entire repository: <+variable.docker_username>/python-harness-app"
-                      curl -s -X DELETE -H "Authorization: JWT $TOKEN" https://hub.docker.com/v2/repositories/<+variable.docker_username>/python-harness-app/
+                      curl -s -X DELETE -H "Authorization: JWT $TOKEN"https://hub.docker.com/repositories/bibhurath/<+variable.docker_username>/python-harness-app/
                       echo ""
                       echo "=== Repository Deleted! ==="
                       echo "Next run will create it fresh again."
@@ -172,7 +172,7 @@ pipeline:
                       echo ""
                       echo "Checking if repository still exists on Docker Hub..."
                       echo ""
-                      STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://hub.docker.com/v2/repositories/<+variable.docker_username>/python-harness-app/)
+                      STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://hub.docker.com/repositories/bibhurath/<+variable.docker_username>/python-harness-app/)
                       if [ "$STATUS" = "404" ]; then
                         echo "✅ Repository python-harness-app — DELETED (not found)"
                       else
